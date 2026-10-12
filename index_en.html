@@ -70,7 +70,7 @@
                 // ----- показ комментариев -----
                 function render(items) {
                     list.textContent = '';
-                    if (!items.length) { list.textContent = 'No comments yet, be first!'; return; }
+                    if (!items.length) { list.textContent = 'No comments yet, be the first to comment!'; return; }
                     items.forEach(function (c) {
                         var card = document.createElement('div');
                         card.className = 'comment';
