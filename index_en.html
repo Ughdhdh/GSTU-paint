@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Отзывы</title>
+        <link rel="stylesheet" href="index.css">
+    </head>
+    <body>
+        <header>
+            <div style="display: flex; align-items: center;">
+                <img src="img/gstu.png" style="margin: 5% 2% 3% 2%;">
+                <h1>Future of Sukhoi State Technical University of Gomel</h1>
+                <div style="margin: 3% 2% 3% 2%">
+                    <h3><a href="index.html">РУС</a></h3>
+                </div>
+            </div>
+            <div style="border-top: 1px solid #000000;">
+                <p style="margin: 3% 2% 3% 2%">Cool words about our prjkt</p>
+            </div>
+        </header>
+
+        <main>
+            <br>
+            <h2>Write a comment</h2>
+            <form id="comment-form" class="comment-form">
+                <!-- ловушка для ботов: людям не видна, боты её заполняют -->
+                <input type="text" name="website" style="display:none" tabindex="-1" autocomplete="off">
+
+                <label for="nick">Nickname*</label>
+                <input required type="text" name="nick" id="nick" maxlength="30" placeholder="WhAt iS yOuR NAme">
+
+                <label for="comment">Comment*</label>
+                <textarea required name="comment" id="comment" rows="4" maxlength="500" placeholder="Write a comment (up to 500 symbols)"></textarea>
+
+                <div class="comment-actions">
+                    <button type="submit" class="btn btn-submit">Send</button>
+                    <p id="comment-status" role="status"></p>
+                </div>
+            </form>
+
+            <h2>Comments</h2>
+            <div id="comments">Loading...</div>
+            <br>
+            <br>
+        </main>
+
+        <script>
+            (function () {
+                // ===== НАСТРОЙКА: данные вашего проекта Supabase (Project Settings -> API) =====
+                var SUPABASE_URL = 'https://quijkgwwyghiwteqxtxk.supabase.co';   // вида https://xxxx.supabase.co
+                var SUPABASE_KEY = 'sb_publishable_eIgn6LfFa7gwtp1LEE0yXw_HiytDEo6';  // публичный ключ, НЕ service_role!
+                // =============================================================================
+
+                var COOLDOWN_MS = 30000;   // не чаще одного комментария в 30 секунд с одного браузера
+                var API = SUPABASE_URL + '/rest/v1/comments';
+                var HEADERS = { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' };
+                var configured = SUPABASE_URL.indexOf('http') === 0 && SUPABASE_KEY.indexOf('ВСТАВЬТЕ') !== 0;
+
+                var form = document.getElementById('comment-form');
+                var btn = form.querySelector('.btn-submit');
+                var status = document.getElementById('comment-status');
+                var list = document.getElementById('comments');
+
+                function setStatus(text, ok) {
+                    status.textContent = text;
+                    status.className = ok ? 'ok' : '';
+                }
+
+                // ----- показ комментариев -----
+                function render(items) {
+                    list.textContent = '';
+                    if (!items.length) { list.textContent = 'No comments yet, be first!'; return; }
+                    items.forEach(function (c) {
+                        var card = document.createElement('div');
+                        card.className = 'comment';
+                        var head = document.createElement('div');
+                        head.className = 'comment-head';
+                        var nickEl = document.createElement('b');
+                        nickEl.textContent = c.nick;
+                        var dateEl = document.createElement('span');
+                        dateEl.textContent = new Date(c.created_at).toLocaleString('ru-RU', {
+                            day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                        });
+                        head.appendChild(nickEl);
+                        head.appendChild(dateEl);
+                        var body = document.createElement('p');
+                        body.textContent = c.message;   // textContent: HTML из комментария не выполнится
+                        card.appendChild(head);
+                        card.appendChild(body);
+                        list.appendChild(card);
+                    });
+                }
+
+                function load() {
+                    if (!configured) { list.textContent = 'Bruh smth is deeply wrong.'; return Promise.resolve(); }
+                    return fetch(API + '?select=nick,message,created_at&order=created_at.desc&limit=100', { headers: HEADERS })
+                        .then(function (r) { if (!r.ok) throw new Error(); return r.json(); })
+                        .then(render)
+                        .catch(function () { list.textContent = 'Cant load this comment.'; });
+                }
+
+                // ----- отправка комментария -----
+                form.addEventListener('submit', async function (e) {
+                    e.preventDefault();
+                    var nick = form.nick.value.trim();
+                    var message = form.comment.value.trim();
+                    if (!nick || !message) { setStatus('Enter your nickname and comment.'); return; }
+                    if (!configured) { setStatus('Bruh smth is deeply wrong.'); return; }
+                    if (form.website.value) {            // бот заполнил скрытое поле
+                        form.reset();
+                        setStatus('Sent!', true);
+                        return;
+                    }
+                    try {
+                        var last = Number(localStorage.getItem('forum_last') || 0);
+                        if (Date.now() - last < COOLDOWN_MS) {
+                            setStatus('Wait a little to send next comment.');
+                            return;
+                        }
+                    } catch (err) {}
+                    btn.disabled = true;
+                    setStatus('Sending...');
+                    try {
+                        var r = await fetch(API, {
+                            method: 'POST',
+                            headers: Object.assign({ 'Prefer': 'return=minimal' }, HEADERS),
+                            body: JSON.stringify({ nick: nick, message: message })
+                        });
+                        if (!r.ok) throw new Error();
+                        try { localStorage.setItem('forum_last', String(Date.now())); } catch (err) {}
+                        form.reset();
+                        setStatus('Sent!', true);
+                        load();
+                    } catch (err) {
+                        setStatus('Something is wrong. Try again later.');
+                    }
+                    btn.disabled = false;
+                });
+
+                load();
+                // новые комментарии подтягиваются сами раз в 30 секунд
+                setInterval(function () { if (!document.hidden) load(); }, 30000);
+            })();
+        </script>
+    </body>
+</html>
